@@ -1,9 +1,7 @@
 import requests
 import json
 import gradio as gr
-import fitz
 import logging
-import base64
 
 # Configuration du logger
 logging.basicConfig(level=logging.ERROR)
@@ -11,17 +9,27 @@ logger = logging.getLogger(__name__)
 
 # Remplacez par votre clé API
 OPENROUTER_API_KEY = "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"
-YOUR_SITE_URL = "votre-site.com"  # Remplacez par votre URL, si nécessaire
+YOUR_SITE_URL = "votre-site.com"  # Remplacez par votre URL si nécessaire
 YOUR_APP_NAME = "MonChatbot"
-        
+
+# Variables pour stocker les informations
+user_info = {"ville": None, "études": None}
 
 def chatbot_response(message, history, pdf_text=None, image_path=None):
-    messages = [{"role": "system", "content": "Vous êtes un assistant IA utile et amical, capable d'analyser des images et du texte."}]
-    
-    message_content = message
-    
-    messages.append({"role": "user", "content": message_content})
-    
+    global user_info
+
+    # Préparer les messages pour l'API
+    messages = [
+        {"role": "system", "content": """Vous êtes un recruteur dans le domaine des ressources humaines (RH). 
+        Votre tâche est de poser deux questions importantes à l'utilisateur : où il habite et quelles études il a faites. 
+        Si l'utilisateur a déjà fourni une réponse, passez à la question suivante. 
+        Uniquement une fois que toutes ces informations ont été obtenues, terminez par : "Albatross vous remercie ! Voici les informations que vous avez fournies :". 
+        Ensuite, l'IA doit formuler un résumé clair et concis, en récapitulant les réponses de l'utilisateur, par exemple : 
+        "Vous habitez [lieu] et vous avez effectué des études en [domaine/études]". Cela permettra à l'IA d'offrir une réponse polie et professionnelle, tout en confirmant les informations collectées. 
+        Ne terminez par le message de remerciement qu'une fois que toutes les informations sont complètes."""},
+        {"role": "user", "content": message}
+    ]
+
     try:
         response = requests.post(
             url="https://openrouter.ai/api/v1/chat/completions",
@@ -36,11 +44,14 @@ def chatbot_response(message, history, pdf_text=None, image_path=None):
                 "messages": messages
             })
         )
+
         if response.status_code == 200:
             data = response.json()
-            return data['choices'][0]['message']['content']
+            bot_message = data['choices'][0]['message']['content']
+            return bot_message
         else:
             return f"Erreur {response.status_code}: {response.text}"
+
     except Exception as e:
         logger.error(f"Erreur lors de l'appel API: {str(e)}")
         return f"Erreur: {str(e)}"
@@ -56,6 +67,8 @@ def bot(history, pdf_text, image):
     return []
 
 def clear_chat():
+    global user_info
+    user_info = {"ville": None, "études": None}
     return [], None, None
 
 # Créer l'interface Gradio
@@ -64,7 +77,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
     msg = gr.Textbox(label="Votre message", placeholder="Tapez votre message ici...")
     clear = gr.Button("Effacer la conversation")
     pdf_text = gr.State()
-    
+
     msg.submit(user, [msg, chatbot, pdf_text], [msg, chatbot, pdf_text], queue=False).then(
         bot, [chatbot, pdf_text], chatbot
     )
