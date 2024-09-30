@@ -1,5 +1,6 @@
 import requests
 import json
+import re
 import gradio as gr
 import logging
 
@@ -14,6 +15,19 @@ YOUR_APP_NAME = "MonChatbot"
 
 # Variables pour stocker les informations
 user_info = {"ville": None, "études": None}
+
+def extract_info_from_summary(summary):
+    # Utilisation d'expressions régulières pour extraire la ville et les études
+    location_match = re.search(r"Vous habitez (.*?) et", summary)
+    studies_match = re.search(r"et vous avez effectué des études en (.*?)[.]", summary)
+
+    if location_match:
+        user_info['ville'] = location_match.group(1)
+    if studies_match:
+        user_info['études'] = studies_match.group(1)
+
+    # Afficher les informations dans la console
+    print(json.dumps(user_info, indent=2))
 
 def chatbot_response(message, history, pdf_text=None, image_path=None):
     global user_info
@@ -40,7 +54,7 @@ def chatbot_response(message, history, pdf_text=None, image_path=None):
                 "Content-Type": "application/json"
             },
             data=json.dumps({
-                "model": "mistralai/pixtral-12b:free",
+                "model": "nousresearch/hermes-3-llama-3.1-405b:free",
                 "messages": messages
             })
         )
@@ -48,6 +62,12 @@ def chatbot_response(message, history, pdf_text=None, image_path=None):
         if response.status_code == 200:
             data = response.json()
             bot_message = data['choices'][0]['message']['content']
+            print("Réponse de l'API :", json.dumps(data, indent=2))
+
+            # Détecter si le message contient le résumé final
+            if "Albatross vous remercie" in bot_message:
+                extract_info_from_summary(bot_message)
+
             return bot_message
         else:
             return f"Erreur {response.status_code}: {response.text}"
