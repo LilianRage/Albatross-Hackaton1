@@ -107,17 +107,16 @@ def get_enterprise_descriptions():
     
     if response.status_code == 200:
         data = response.json()
-        descriptions = [(record['fields'].get('Nom', f"Entreprise {i+1}"), record['fields']['Description entreprises'], record['fields'].get('ID_Offre2')) for i, record in enumerate(data['records'])]
+        descriptions = [(record['fields'].get('Nom', f"Entreprise {i+1}"), record['fields']['Description entreprises']) for i, record in enumerate(data['records'])]
         return descriptions
     else:
         logger.error(f"Erreur lors de la récupération des descriptions d'entreprises : {response.status_code} - {response.text}")
         return []
 
-
 def compare_skills_ai(student_skills, enterprise_skills):
     messages = [
         {"role": "system", "content": "Vous êtes un expert en recrutement chargé d'évaluer la correspondance entre les compétences d'un étudiant et celles requises par une entreprise. Votre tâche est d'analyser ces compétences et de fournir une valeur de correspondance entre l'étudiant et les différentes entreprise, je veux simplement la note global pour chaque entreprise. Tenez compte des compétences similaires ou complémentaires, pas seulement des correspondances exactes."},
-        {"role": "user", "content": f"Compétences de l'étudiant :\n{student_skills}\n\nCompétences requises par l'entreprise :\n{enterprise_skills}\n\nVeuillez analyser ces compétences et fournir un chiffre entre 0 et 100 pour la correspondance entre l'etudiant et l'entreprise afin de voir le taux de compatibilité entre l'etudiants et les différentes entreprises. en détaille rien, juste la note global sans le détail. Ecrit que et uniquement le score, par exemple : 100 et pas : Score : 100 non juste 100"}
+        {"role": "user", "content": f"Compétences de l'étudiant :\n{student_skills}\n\nCompétences requises par l'entreprise :\n{enterprise_skills}\n\nVeuillez analyser ces compétences et fournir un chiffre entre 0 et 100 pour la correspondance entre l'etudiant et l'entreprise afin de voir le taux de compatibilité entre l'etudiants et les différentes entreprises. en détaille rien, juste la note global sans le détail. Ecrit juste le nom de l'entreprise puis le score"}
     ]
 
     try:
@@ -220,61 +219,14 @@ def upload_to_airtable(skill_assessment):
         logger.error(f"Erreur lors de l'envoi à Airtable : {str(e)}")
         return f"Erreur lors de l'enregistrement dans Airtable : {str(e)}"
 
-def add_to_compatibility_table(student_id, skill_assessment, enterprise_skills, offer_id, compatibility_rate):
-    url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/TauxCompatibilite"
-    headers = {
-        "Authorization": f"Bearer {AIRTABLE_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    
-    data = {
-        "fields": {
-            "ID_Etu": student_id,
-            "DescriptionEtu": skill_assessment,
-            "DescriptionOffre": enterprise_skills,
-            "ID_Offre": offer_id,
-            "Taux de compatibilité" : compatibility_rate
-        }
-    }
-    
-    try:
-        response = requests.post(url, headers=headers, json=data)
-        if response.status_code == 200:
-            return "Données ajoutées avec succès dans la table Taux de compatibilité."
-        else:
-            logger.error(f"Erreur lors de l'ajout à la table de compatibilité : {response.status_code} - {response.text}")
-            return f"Erreur lors de l'ajout à la table de compatibilité : {response.status_code}"
-    except Exception as e:
-        logger.error(f"Erreur lors de l'ajout à Airtable : {str(e)}")
-        return f"Erreur lors de l'ajout à Airtable : {str(e)}"
-
-
-
 def submit_and_compare(skill_assessment_output):
     # Remplissage de la BDD Airtable avec le bilan des compétences
     airtable_response = upload_to_airtable(skill_assessment_output)
     
     # Comparaison avec les entreprises
-    enterprise_descriptions = get_enterprise_descriptions()
-    student_id = get_last_user_id()  # Récupère l'ID de l'étudiant
-    results = []
+    comparison_result = compare_with_enterprises(skill_assessment_output)
     
-    for enterprise_name, enterprise_desc, offer_id in enterprise_descriptions:
-        analysis = compare_skills_ai(skill_assessment_output, enterprise_desc)
-
-        # Envoie à Airtable dans la table Taux de compatibilité avec la phrase complète
-        add_response = add_to_compatibility_table(student_id, skill_assessment_output, enterprise_desc, offer_id, analysis)
-        
-        # Envoi du taux de compatibilité à Airtable (ajoutez une nouvelle ligne ici pour le stocker)
-        #add_response_compatibility = add_to_compatibility_table(student_id, skill_assessment_output, analysis, offer_id)
-        
-        results.append(f"Entreprise : {enterprise_name}\n{add_response}")
-
-    output = "\n".join(results)
-    return f"Résultat de l'enregistrement dans Airtable: {airtable_response}\n\n{output}"
-
-
-
+    return f"Résultat de l'enregistrement dans Airtable: {airtable_response}\n\n{comparison_result}"
 
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
     chatbot = gr.Chatbot(label="Historique de la conversation")
