@@ -3,6 +3,8 @@ import json
 import gradio as gr
 import logging
 
+
+
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,24 @@ competence_questions = [
     "Pouvez-vous me parler de vos expériences professionnelles ?",
     "Quelles sont vos compétences en gestion de projet ?"
 ]
+
+
+def getParams(x, request: gr.Request):
+    # Récupération des paramètres sous forme de dictionnaire
+    params = request.query_params
+
+    # Vérifier si le paramètre 'id' est présent
+    if 'id' in params:
+        return params['id']  # Retourner uniquement la valeur de 'id'
+    else:
+        return None
+
+
+def displayParam(request: gr.Request):
+    # Appeler la fonction getParams avec un paramètre fictif pour x et le request
+    params = getParams(None, request)
+    print(params)
+    return params
 
 def get_last_user_id():
     url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/Inscription_Etudiants"
@@ -233,7 +253,7 @@ def add_to_compatibility_table(student_id, skill_assessment, enterprise_skills, 
             "DescriptionEtu": skill_assessment,
             "DescriptionOffre": enterprise_skills,
             "ID_Offre": offer_id,
-            "Taux de compatibilité" : compatibility_rate
+            "Taux de compatibilité" : int(compatibility_rate)
         }
     }
     
@@ -250,13 +270,15 @@ def add_to_compatibility_table(student_id, skill_assessment, enterprise_skills, 
 
 
 
-def submit_and_compare(skill_assessment_output):
+def submit_and_compare(skill_assessment_output, request: gr.Request):
     # Remplissage de la BDD Airtable avec le bilan des compétences
     airtable_response = upload_to_airtable(skill_assessment_output)
     
     # Comparaison avec les entreprises
     enterprise_descriptions = get_enterprise_descriptions()
-    student_id = get_last_user_id()  # Récupère l'ID de l'étudiant
+    #student_id = get_last_user_id()  # Récupère l'ID de l'étudiant
+    student_id = int(getParams(None, request))  # Récupère l'ID de l'étudiant
+
     results = []
     
     for enterprise_name, enterprise_desc, offer_id in enterprise_descriptions:
@@ -283,6 +305,8 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
     skill_assessment_output = gr.Textbox(label="Bilan des compétences", interactive=False)
     submit_button = gr.Button("Soumettre et comparer")
     comparison_output = gr.Textbox(label="Résultat de la comparaison", interactive=False)
+    #displayParams = gr.Button("Voir paramètres url")
+    #displayParams.click(displayParam)
 
     demo.load(start_conversation, inputs=None, outputs=[chatbot, skill_assessment_output])
     msg.submit(user, [msg, chatbot], [msg, chatbot], queue=False).then(
