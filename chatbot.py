@@ -423,7 +423,7 @@ with gr.Blocks(theme=custom_theme) as demo:
                 lines=5
             )
             gr.Markdown(
-                """<a href="https://votre-url-externe.com" target="_blank">
+                """<a href="https://felice1519.softr.app" target="_blank">
                 <button style="width: 100%; padding: 10px; background-color: #C4DAFB; color: #3662E3; border: none; border-radius: 5px; font-family: 'Helvetica', sans-serif; font-weight: bold;">
                 🔮 Voir offres 🔮
                 </button>
