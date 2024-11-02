@@ -45,16 +45,17 @@ def get_last_user_id():
                 last_record = data['records'][0]
                 last_user_id = last_record['fields'].get('ID_Etu', 'Aucun ID trouvé')
                 last_user_name = last_record['fields'].get('Nom', 'Aucun nom trouvé')
-                return last_user_id, last_user_name
+                last_user_email = last_record['fields'].get('Email', 'Aucun email trouvé')
+                return last_user_id, last_user_name, last_user_email
             else:
-                return None, None
+                return None, None, None
         else:
-            logger.error(f"Erreur lors de la récupération des ID et du nom : {response.status_code} - {response.text}")
-            return None, None
+            logger.error(f"Erreur lors de la récupération des ID, nom et email : {response.status_code} - {response.text}")
+            return None, None, None
 
     except Exception as e:
         logger.error(f"Erreur lors de la récupération des informations : {str(e)}")
-        return None, None
+        return None, None, None
 
 def call_api_for_response_analysis(question, response):
     messages = [
@@ -136,7 +137,7 @@ def call_api_for_skill_assessment(responses):
         return f"Erreur: {str(e)}"
 
 def get_enterprise_descriptions():
-    url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/DescriptionsEntreprises"
+    url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/Formulaire firm"
     headers = {
         "Authorization": f"Bearer {AIRTABLE_API_KEY}",
         "Content-Type": "application/json"
@@ -146,8 +147,15 @@ def get_enterprise_descriptions():
     
     if response.status_code == 200:
         data = response.json()
-        descriptions = [(record['fields'].get('Nom', f"Entreprise {i+1}"), record['fields']['Description entreprises'], record['fields'].get('ID_Offre2')) for i, record in enumerate(data['records'])]
-        return descriptions
+        firm_data = [
+            (
+                record['fields'].get('ID_Offre'),
+                record['fields'].get('Compétences requises'),
+                record['fields'].get('Recruteur / Entreprise')
+            ) 
+            for record in data['records']
+        ]
+        return firm_data
     else:
         logger.error(f"Erreur lors de la récupération des descriptions d'entreprises : {response.status_code} - {response.text}")
         return []
@@ -155,7 +163,7 @@ def get_enterprise_descriptions():
 def compare_skills_ai(student_skills, enterprise_skills):
     messages = [
         {"role": "system", "content": "Vous êtes un expert en recrutement chargé d'évaluer la correspondance entre les compétences d'un étudiant et celles requises par une entreprise. Votre tâche est d'analyser ces compétences et de fournir une valeur de correspondance entre l'étudiant et les différentes entreprise, je veux simplement la note global pour chaque entreprise. Tenez compte des compétences similaires ou complémentaires, pas seulement des correspondances exactes."},
-        {"role": "user", "content": f"Compétences de l'étudiant :\n{student_skills}\n\nCompétences requises par l'entreprise :\n{enterprise_skills}\n\nVeuillez analyser ces compétences et fournir un chiffre entre 0 et 100 pour la correspondance entre l'etudiant et l'entreprise afin de voir le taux de compatibilité entre l'etudiants et les différentes entreprises. en détaille rien, juste la note global sans le détail. Ecrit que et uniquement le score, par exemple : 100 et pas : Score : 100, juste 100"}
+        {"role": "user", "content": f"Compétences de l'étudiant :\n{student_skills}\n\nCompétences requises par l'entreprise :\n{enterprise_skills}\n\nVeuillez analyser ces compétences et fournir un chiffre entre 0 et 100 pour la correspondance entre l'etudiant et l'entreprise afin de voir le taux de compatibilité entre l'etudiants et les différentes entreprises. ne détaille rien, juste la note global sans le détail. Ecrit que et uniquement le score, par exemple : 100 et pas : Score : 100, juste 100"}
     ]
 
     try:
@@ -189,7 +197,7 @@ def compare_skills_ai(student_skills, enterprise_skills):
         logger.error(f"Erreur lors de l'appel API: {str(e)}")
         return f"Erreur lors de l'analyse des compétences : {str(e)}"
 
-def upload_to_airtable(skill_assessment):
+def upload_to_airtable(skill_assessment, student_id):
     url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
     headers = {
         "Authorization": f"Bearer {AIRTABLE_API_KEY}",
@@ -197,6 +205,7 @@ def upload_to_airtable(skill_assessment):
     }
     data = {
         "fields": {
+            "ID_Etudiant": student_id,
             "Description Compétences Etudiants": skill_assessment  
         }
     }
@@ -214,7 +223,7 @@ def upload_to_airtable(skill_assessment):
         logger.error(f"Erreur lors de l'envoi : {str(e)}")
         return f"Erreur lors de l'enregistrement : {str(e)}"
 
-def add_to_compatibility_table(student_id, skill_assessment, enterprise_skills, offer_id, compatibility_rate, student_name):
+def add_to_compatibility_table(student_id, skill_assessment, enterprise_skills, offer_id, compatibility_rate, student_name, student_mail):
     url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/TauxCompatibilité"
     headers = {
         "Authorization": f"Bearer {AIRTABLE_API_KEY}",
@@ -228,7 +237,8 @@ def add_to_compatibility_table(student_id, skill_assessment, enterprise_skills, 
             "ID_Offre": offer_id,
             "DescriptionOffre": enterprise_skills,
             "Taux de compatibilité" : compatibility_rate,
-            "Nom": student_name
+            "Nom": student_name, 
+            "EmailEtudiant": student_mail
         }
     }
     
@@ -328,16 +338,16 @@ def manage_conversation_flow(question, response, history):
             return f"Désolé, nous avons rencontré un problème. Voici votre bilan basé sur les informations fournies :\n\n{skill_assessment}", skill_assessment
 
 def submit_and_compare(skill_assessment_output):
-    airtable_response = upload_to_airtable(skill_assessment_output)
+    student_id, student_name, student_mail = get_last_user_id()
+    airtable_response = upload_to_airtable(skill_assessment_output, student_id)
     
     enterprise_descriptions = get_enterprise_descriptions()
-    student_id, student_name = get_last_user_id()
     results = []
     
     for enterprise_name, enterprise_desc, offer_id in enterprise_descriptions:
         analysis = compare_skills_ai(skill_assessment_output, enterprise_desc)
 
-        add_response = add_to_compatibility_table(student_id, skill_assessment_output, enterprise_desc, offer_id, analysis, student_name)
+        add_response = add_to_compatibility_table(student_id, skill_assessment_output, enterprise_desc, offer_id, analysis, student_name, student_mail)
         
         results.append(f"Entreprise : {enterprise_name}\n{add_response}")
 
